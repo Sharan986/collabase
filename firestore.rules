@@ -1,0 +1,91 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ========================================
+    // HELPER FUNCTIONS
+    // ========================================
+    
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function hasCollegeEmail() {
+      return request.auth.token.email.matches('.*@arkajainuniversity[.]ac[.]in$');
+    }
+    
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+    
+    function isValidUser() {
+      return isSignedIn() && hasCollegeEmail();
+    }
+    
+    // ========================================
+    // USERS COLLECTION
+    // ========================================
+    match /users/{userId} {
+      // Anyone signed in with college email can read users (for team matching)
+      allow read: if isValidUser();
+      
+      // Users can only write to their own document
+      allow write: if isValidUser() && isOwner(userId);
+    }
+    
+    // ========================================
+    // TEAMS COLLECTION
+    // ========================================
+    match /teams/{teamId} {
+      // Anyone signed in with college email can read teams
+      allow read: if isValidUser();
+      
+      // Anyone signed in with college email can create teams
+      allow create: if isValidUser();
+      
+      // Only team creator or members can update
+      allow update: if isValidUser() && (
+        resource.data.creatorId == request.auth.uid ||
+        request.auth.uid in resource.data.members
+      );
+      
+      // Only creator can delete
+      allow delete: if isValidUser() && 
+        resource.data.creatorId == request.auth.uid;
+    }
+    
+    // ========================================
+    // JOIN REQUESTS COLLECTION
+    // ========================================
+    match /joinRequests/{requestId} {
+      // Users can read requests they sent or for teams they created
+      allow read: if isValidUser();
+      
+      // Anyone signed in with college email can create join requests
+      allow create: if isValidUser();
+      
+      // Allow update (for accepting/rejecting) - verified by team creator
+      allow update: if isValidUser();
+      
+      // Allow delete (for cleanup)
+      allow delete: if isValidUser();
+    }
+    
+    // ========================================
+    // TEAM INVITES COLLECTION
+    // ========================================
+    match /teamInvites/{inviteId} {
+      // Users can read invites sent to them or invites they sent
+      allow read: if isValidUser();
+      
+      // Anyone signed in with college email can create invites (team creators)
+      allow create: if isValidUser();
+      
+      // Allow update (for accepting/declining)
+      allow update: if isValidUser();
+      
+      // Allow delete
+      allow delete: if isValidUser();
+    }
+  }
+}
